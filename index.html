@@ -221,6 +221,17 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
 .prow input[type="text"] { min-height: 40px; padding: 6px 10px; }
 .prow input[type="text"].num { text-align: center; padding-inline: 4px; font-family: var(--display); font-weight: 600; font-size: 18px; font-variant-numeric: tabular-nums; }
 .save { display: flex; flex-direction: column; gap: 6px; }
+.panel { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.panel .chip { background: var(--bg); }
+.panel .chip.on { background: var(--ink); }
+.panel.removing .chip { border-color: var(--card-r); color: var(--card-r); }
+.addrow { display: flex; gap: 6px; }
+.addrow button { flex: 0 0 auto; }
+.arow { display: flex; flex-direction: column; gap: 6px; padding-block: 12px; border-bottom: 1px solid var(--line); }
+.arow strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.arow small { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.arow .btns { display: flex; gap: 6px; }
+.arow .btns button { min-height: 38px; padding: 4px 16px; }
 </style>
 </head>
 <body>
@@ -243,6 +254,7 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
   <div class="tabs">
     <button id="tabMatch" type="button">Match</button>
     <button id="tabTeams" type="button">Teams</button>
+    <button id="tabArchive" type="button">Archive</button>
   </div>
 
   <div class="view" id="matchView">
@@ -299,6 +311,20 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
       <div class="field">
         <label class="lbl" for="teamA">Our team</label>
         <input type="text" id="teamA" autocomplete="off">
+        <div class="panel" id="panelBox">
+          <span class="lbl">Saved panel</span>
+          <p class="note" id="panelInfo"></p>
+          <div class="chips" id="panelChips"></div>
+          <div class="addrow">
+            <input type="text" id="panelAdd" placeholder="Add a player to the panel" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="Add a player to the panel">
+            <button id="panelAddBtn" type="button">Add</button>
+          </div>
+          <div class="seg">
+            <button id="panelFromSheet" type="button">Add sheet names</button>
+            <button id="panelEdit" type="button">Remove players</button>
+          </div>
+          <p class="note" id="panelMsg" aria-live="polite"></p>
+        </div>
         <span class="lbl">Starting 15</span>
         <div class="rows" id="rowsA"></div>
         <p class="note" id="infoA"></p>
@@ -314,7 +340,13 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
       </div>
     </div>
     <button id="newMatch" type="button">Start new match</button>
-    <p class="note">A new match wipes the log and the clock. Team names and sheets stay.</p>
+    <p class="note">The match you were logging moves to the Archive. Your team sheet stays. The opposition is cleared.</p>
+    <p class="note" id="newMsg" aria-live="polite"></p>
+  </div>
+
+  <div class="view" id="archiveView" hidden>
+    <p class="note" id="archInfo"></p>
+    <div id="archList"></div>
   </div>
 </div>
 
@@ -745,7 +777,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     return a;
   }
   function fresh() {
-    return { v: 2, code: "hurling",
+    return { v: 2, id: uid(), code: "hurling",
              teams: [{ name: "Bishopstown", rows: blankRows() }, { name: "Opposition", rows: blankRows() }],
              phase: 0, starts: {}, ends: {}, entries: [], sel: null, tab: "teams" };
   }
@@ -1082,10 +1114,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     });
   }
   function paintTabs() {
-    var m = state.tab !== "teams";
-    $("matchView").hidden = !m; $("teamsView").hidden = m;
-    $("tabMatch").setAttribute("aria-pressed", m ? "true" : "false");
-    $("tabTeams").setAttribute("aria-pressed", m ? "false" : "true");
+    var tab = state.tab === "teams" || state.tab === "archive" ? state.tab : "match";
+    $("matchView").hidden = tab !== "match"; $("teamsView").hidden = tab !== "teams"; $("archiveView").hidden = tab !== "archive";
+    $("tabMatch").setAttribute("aria-pressed", tab === "match" ? "true" : "false");
+    $("tabTeams").setAttribute("aria-pressed", tab === "teams" ? "true" : "false");
+    $("tabArchive").setAttribute("aria-pressed", tab === "archive" ? "true" : "false");
     $("codeH").setAttribute("aria-pressed", state.code === "hurling" ? "true" : "false");
     $("codeF").setAttribute("aria-pressed", state.code === "football" ? "true" : "false");
     [0, 1].forEach(function (side) {
@@ -1097,7 +1130,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         : st + " of 15 starters named, " + bn + " on the bench.";
     });
   }
-  function paintAll() { paintBoard(); paintPads(); paintDetail(); paintList(); paintStats(); paintTabs(); tick(); }
+  function paintAll() { paintBoard(); paintPads(); paintDetail(); paintList(); paintStats(); paintTabs(); paintPanel(); paintArchive(); tick(); }
 
   /* Actions */
   function uid() { return Date.now() + "-" + Math.random().toString(36).slice(2, 7); }
@@ -1186,10 +1219,18 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     if (PH[state.phase].run) { delete state.ends[state.phase]; keepAwake(); }
     save(); paintBoard(); tick();
   });
-  twoPress($("newMatch"), "Start new match", "Press again to wipe the log", function () {
+  twoPress($("newMatch"), "Start new match", "Press again to start a new match", function () {
+    var had = state.entries.length > 0;
+    if (!archiveCurrent()) {
+      $("newMsg").textContent = "This match could not be moved to the Archive because the phone's storage for this page is full. Save its report as a file, or delete old matches, then try again.";
+      return;
+    }
+    state.id = uid();
     state.entries = []; state.sel = null; state.phase = 0; state.starts = {}; state.ends = {};
+    state.teams[1] = { name: "Opposition", rows: blankRows() };
     exportEl.hidden = true; exportNote.hidden = true;
-    save(); paintAll();
+    save(); showState();
+    $("newMsg").textContent = had ? "New match ready. The last one is in the Archive." : "New match ready.";
   });
   function nudge(ms) {
     var i = state.phase;
@@ -1202,6 +1243,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   $("tabMatch").addEventListener("click", function () { state.tab = "match"; save(); paintTabs(); });
   $("tabTeams").addEventListener("click", function () { state.tab = "teams"; save(); paintTabs(); });
+  $("tabArchive").addEventListener("click", function () { state.tab = "archive"; save(); paintTabs(); paintArchive(); });
   $("codeH").addEventListener("click", function () { state.code = "hurling"; save(); paintAll(); });
   $("codeF").addEventListener("click", function () { state.code = "football"; save(); paintAll(); });
   [0, 1].forEach(function (side) {
@@ -1246,6 +1288,173 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       row.appendChild(num); row.appendChild(nm);
       box.appendChild(row);
     });
+  }
+
+  /* Saved panel: our players, kept between matches */
+  var PKEY = "match-panel-v1", AKEY = "match-archive-v1";
+  var panel = [], archive = [], panelRemove = false;
+  function loadExtra() {
+    try { panel = JSON.parse(localStorage.getItem(PKEY)) || []; } catch (e) { panel = []; }
+    try { archive = JSON.parse(localStorage.getItem(AKEY)) || []; } catch (e) { archive = []; }
+    if (!Array.isArray(panel)) panel = [];
+    if (!Array.isArray(archive)) archive = [];
+    panel = panel.filter(function (x) { return typeof x === "string" && x.trim(); });
+    archive = archive.filter(function (a) { return a && a.m && Array.isArray(a.m.entries); });
+  }
+  function savePanel() { try { localStorage.setItem(PKEY, JSON.stringify(panel)); } catch (e) {} }
+  function saveArchive(list) { try { localStorage.setItem(AKEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
+  function tidy(x) { return String(x || "").trim().replace(/\s+/g, " "); }
+  function norm(x) { return tidy(x).toLowerCase(); }
+  function bySurname(a, b) {
+    var x = norm(a).split(" "), y = norm(b).split(" ");
+    return x[x.length - 1].localeCompare(y[y.length - 1]) || norm(a).localeCompare(norm(b));
+  }
+  function sheetIndex(name) {
+    var rows = state.teams[0].rows, n = norm(name);
+    for (var k = 0; k < rows.length; k++) if (norm(rows[k].name) === n) return k;
+    return -1;
+  }
+  function nextEmpty() {
+    var rows = state.teams[0].rows;
+    for (var k = 0; k < rows.length; k++) if (!tidy(rows[k].name)) return k;
+    return -1;
+  }
+  function panelAddName(name) {
+    name = tidy(name);
+    if (!name || panel.some(function (p) { return norm(p) === norm(name); })) return false;
+    panel.push(name);
+    return true;
+  }
+  function jersey(k) { return tidy(state.teams[0].rows[k].n) || String(k + 1); }
+  function paintPanel() {
+    var box = $("panelChips"), ne = nextEmpty();
+    box.textContent = "";
+    box.className = "chips" + (panel.length ? " players" : "");
+    $("panelBox").classList.toggle("removing", panelRemove);
+    $("panelInfo").textContent = !panel.length
+      ? "No panel saved yet. Type this week's team in the list below, then tap Add sheet names. After that you pick the team by tapping names."
+      : panelRemove ? "Tap a name to remove that player from the panel."
+      : ne < 0 ? "Every jersey is filled. Tap a selected name to take that player out."
+      : "Tap a name to give that player the next empty jersey, number " + jersey(ne) + ". Tap a selected name to take that player out.";
+    panel.slice().sort(bySurname).forEach(function (name) {
+      var k = sheetIndex(name);
+      var b = h("button", "chip" + (k >= 0 && !panelRemove ? " on" : ""), panelRemove ? "× " + name : k >= 0 ? jersey(k) + " " + name : name);
+      b.type = "button";
+      if (!panelRemove) b.setAttribute("aria-pressed", k >= 0 ? "true" : "false");
+      b.addEventListener("click", function () {
+        if (panelRemove) {
+          panel = panel.filter(function (p) { return norm(p) !== norm(name); });
+          savePanel(); paintPanel();
+          return;
+        }
+        if (k >= 0) state.teams[0].rows[k].name = "";
+        else { var e = nextEmpty(); if (e < 0) return; state.teams[0].rows[e].name = name; }
+        RC[0] = null; save(); buildRows(0); paintAll();
+      });
+      box.appendChild(b);
+    });
+    $("panelEdit").hidden = !panel.length;
+    $("panelEdit").textContent = panelRemove ? "Done removing" : "Remove players";
+    $("panelEdit").setAttribute("aria-pressed", panelRemove ? "true" : "false");
+  }
+  function panelAddMany(lines) {
+    var added = 0;
+    lines.forEach(function (line) { if (panelAddName(String(line).replace(/^\d{1,2}[\s.):,-]+/, ""))) added += 1; });
+    savePanel(); paintPanel();
+    $("panelMsg").textContent = added ? "Added " + added + (added === 1 ? " player" : " players") + ". The panel has " + panel.length + "."
+      : "Nothing new to add. The panel has " + panel.length + ".";
+  }
+  function panelAddFromBox() {
+    var v = $("panelAdd").value;
+    if (!tidy(v)) return;
+    panelAddMany([v]);
+    $("panelAdd").value = "";
+  }
+  $("panelAddBtn").addEventListener("click", panelAddFromBox);
+  $("panelAdd").addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); panelAddFromBox(); } });
+  $("panelAdd").addEventListener("paste", function (ev) {
+    var text = (ev.clipboardData && ev.clipboardData.getData("text")) || "";
+    var lines = text.split(/\r?\n/).map(trim).filter(Boolean);
+    if (lines.length < 2) return;
+    ev.preventDefault();
+    panelAddMany(lines);
+  });
+  $("panelFromSheet").addEventListener("click", function () {
+    panelAddMany(state.teams[0].rows.map(function (r) { return r.name; }).filter(tidy));
+  });
+  $("panelEdit").addEventListener("click", function () { panelRemove = !panelRemove; paintPanel(); });
+
+  /* Archive: finished matches, kept on this phone */
+  function snapshot() {
+    return JSON.parse(JSON.stringify({ id: state.id, code: state.code, teams: state.teams, phase: state.phase,
+                                       starts: state.starts, ends: state.ends, entries: state.entries }));
+  }
+  function withCurrent() {
+    var list = archive.filter(function (a) { return a.id !== state.id; });
+    if (state.entries.length) list.unshift({ id: state.id, savedAt: Date.now(), m: snapshot() });
+    return list;
+  }
+  function archiveCurrent() {
+    var list = withCurrent();
+    if (!saveArchive(list)) return false;
+    archive = list;
+    return true;
+  }
+  function openMatch(id) {
+    var hit = null;
+    archive.forEach(function (a) { if (a.id === id) hit = a; });
+    if (!hit) return;
+    // Keep the current match first, then switch, then drop the opened one from the list.
+    var list = withCurrent();
+    if (!saveArchive(list)) {
+      $("archInfo").textContent = "That match could not be opened because the phone's storage for this page is full. Delete an old match and try again.";
+      return;
+    }
+    var next = fresh(), m = JSON.parse(JSON.stringify(hit.m));
+    Object.keys(m).forEach(function (key) { next[key] = m[key]; });
+    next.id = hit.id; next.tab = "match"; next.sel = null;
+    state = next;
+    save();
+    archive = list.filter(function (a) { return a.id !== hit.id; });
+    saveArchive(archive);
+    showState();
+  }
+  function paintArchive() {
+    var box = $("archList");
+    box.textContent = "";
+    $("archInfo").textContent = archive.length
+      ? "Finished matches kept on this phone. Open one to edit it or save its report. The match on the Match tab moves in here when you open another."
+      : "No past matches yet. When you start a new match, the one you were logging is kept here.";
+    archive.forEach(function (a) {
+      var m = a.m, sc = [{ g: 0, p: 0 }, { g: 0, p: 0 }];
+      m.entries.forEach(function (e) { if (SCORE[e.kind] && sc[e.side]) addScore(sc[e.side], e); });
+      var names = [0, 1].map(function (i) { return tidy(m.teams && m.teams[i] && m.teams[i].name) || (i ? "Opposition" : "Our team"); });
+      var d = new Date(m.entries.length ? m.entries[0].at : a.savedAt);
+      var row = h("div", "arow");
+      row.appendChild(h("strong", null, names[0] + " " + fs(sc[0]) + " (" + total(sc[0]) + ") v " + names[1] + " " + fs(sc[1]) + " (" + total(sc[1]) + ")"));
+      row.appendChild(h("small", null, (m.code === "football" ? "Football" : "Hurling") + ", " +
+        d.toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) + ", " +
+        m.entries.length + (m.entries.length === 1 ? " entry" : " entries")));
+      var btns = h("div", "btns"), open = h("button", "primary", "Open"), del = h("button", null, "Delete");
+      open.type = "button"; del.type = "button";
+      open.addEventListener("click", function () { openMatch(a.id); });
+      twoPress(del, "Delete", "Press again to delete for good", function () {
+        var list = archive.filter(function (x) { return x.id !== a.id; });
+        if (saveArchive(list)) archive = list;
+        paintArchive();
+      });
+      btns.appendChild(open); btns.appendChild(del);
+      row.appendChild(btns);
+      box.appendChild(row);
+    });
+  }
+  function showState() {
+    migrate();
+    if (!state.id) state.id = uid();
+    RC = [null, null];
+    $("teamA").value = state.teams[0].name; $("teamB").value = state.teams[1].name;
+    buildRows(0); buildRows(1);
+    paintAll();
   }
 
   function logText() {
@@ -1446,11 +1655,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   function start(data) {
     if (data && data.v === 2 && Array.isArray(data.entries)) { state = data; } else { load(); }
+    loadExtra();
     migrate();
-    RC = [null, null];
-    $("teamA").value = state.teams[0].name; $("teamB").value = state.teams[1].name;
-    buildRows(0); buildRows(1);
-    paintAll();
+    if (!state.id) state.id = uid();
+    archive = archive.filter(function (a) { return a.id !== state.id; });
+    showState();
     setInterval(tick, 200);
     keepAwake();
   }
