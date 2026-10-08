@@ -224,7 +224,6 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
 .panel { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
 .panel .chip { background: var(--bg); }
 .panel .chip.on { background: var(--ink); }
-.panel.removing .chip { border-color: var(--card-r); color: var(--card-r); }
 .addrow { display: flex; gap: 6px; }
 .addrow button { flex: 0 0 auto; }
 .arow { display: flex; flex-direction: column; gap: 6px; padding-block: 12px; border-bottom: 1px solid var(--line); }
@@ -232,6 +231,20 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
 .arow small { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 .arow .btns { display: flex; gap: 6px; }
 .arow .btns button { min-height: 38px; padding: 4px 16px; }
+.pick { width: 100%; min-height: 40px; padding: 6px 10px; text-align: left; font-weight: 500; overflow-wrap: anywhere; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pick::after { content: ""; flex: 0 0 auto; border: 5px solid transparent; border-top-color: var(--muted); margin-top: 5px; }
+.pick.blank { color: var(--muted); font-weight: 400; }
+.pick[aria-expanded="true"] { border-color: var(--ink); }
+.drop { display: flex; flex-direction: column; gap: 8px; padding: 10px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--ink); border-radius: 6px; }
+.drop input[type="text"] { background: var(--bg); }
+.drop .chip { background: var(--bg); text-align: left; }
+.opts { max-height: 252px; overflow-y: auto; }
+.prow2 { display: grid; grid-template-columns: 1fr 44px; gap: 6px; }
+.prow2 input[type="text"] { min-height: 40px; padding: 6px 10px; background: var(--bg); }
+.prow2 button { padding: 0; min-height: 40px; font-size: 20px; line-height: 1; color: var(--muted); }
+.controls button.saved { color: var(--live); border-color: var(--live); }
+.ftmsg { margin: -4px 0 0; font-size: 13px; }
+.arow .now { color: var(--live); font-weight: 600; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -246,9 +259,11 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
     <div class="controls">
       <button class="primary grow" id="phase" type="button">Start 1st half</button>
       <button id="back" type="button">Undo</button>
+      <button id="etBtn" type="button" hidden>Extra time</button>
       <button class="nudge" id="minus" type="button" aria-label="Take 10 seconds off the clock">&minus;10s</button>
       <button class="nudge" id="plus" type="button" aria-label="Add 10 seconds to the clock">+10s</button>
     </div>
+    <p class="note ftmsg" id="ftMsg" aria-live="polite" hidden></p>
   </div>
 
   <div class="tabs">
@@ -274,7 +289,10 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
 
     <div class="log-head">
       <h2 id="count">Log, 0 entries</h2>
-      <button id="copy" type="button">Copy log</button>
+      <div class="btns" style="display:flex;gap:6px">
+        <button id="archBtn" type="button">Save to archive</button>
+        <button id="copy" type="button">Copy log</button>
+      </div>
     </div>
     <div class="save" id="saveBox" hidden>
       <span class="lbl">Save the report as a file</span>
@@ -312,20 +330,18 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
         <label class="lbl" for="teamA">Our team</label>
         <input type="text" id="teamA" autocomplete="off">
         <div class="panel" id="panelBox">
-          <span class="lbl">Saved panel</span>
+          <div class="dhead"><span class="lbl" id="panelHead">Saved panel</span><button id="panelToggle" type="button">Edit panel</button></div>
           <p class="note" id="panelInfo"></p>
-          <div class="chips" id="panelChips"></div>
-          <div class="addrow">
-            <input type="text" id="panelAdd" placeholder="Add a player to the panel" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="Add a player to the panel">
-            <button id="panelAddBtn" type="button">Add</button>
-          </div>
-          <div class="seg">
-            <button id="panelFromSheet" type="button">Add sheet names</button>
-            <button id="panelEdit" type="button">Remove players</button>
+          <div class="grp" id="panelEditBox" hidden>
+            <div class="addrow">
+              <input type="text" id="panelAdd" placeholder="Add a player, or paste a list" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="Add a player to the saved panel">
+              <button id="panelAddBtn" type="button">Add</button>
+            </div>
+            <div class="rows" id="panelRows"></div>
           </div>
           <p class="note" id="panelMsg" aria-live="polite"></p>
         </div>
-        <span class="lbl">Starting 15</span>
+        <span class="lbl">Starting 15, tap a jersey to pick</span>
         <div class="rows" id="rowsA"></div>
         <p class="note" id="infoA"></p>
         <button id="clearA" type="button">Clear names</button>
@@ -348,7 +364,7 @@ textarea.export { min-height: 140px; font: 13px/1.4 ui-monospace, Menlo, Consola
     <p class="note" id="archInfo"></p>
     <div id="archList"></div>
   </div>
-  <p class="note" id="ver">MatchTracker version 8, built 7 Oct 2026</p>
+  <p class="note" id="ver">MatchTracker version 14, built 8 Oct 2026</p>
 </div>
 
 <script>/** @license
@@ -791,7 +807,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       if (raw) { var s = JSON.parse(raw); if (s && s.v === 2 && Array.isArray(s.entries)) state = s; }
     } catch (e) {}
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} if (state.archivedAt) laterRefresh(); }
 
   var $ = function (id) { return document.getElementById(id); };
   function h(tag, cls, text) {
@@ -975,11 +991,16 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     $("scoreA").textContent = fs(sc[0]); $("scoreB").textContent = fs(sc[1]);
     $("totA").textContent = "(" + total(sc[0]) + ")"; $("totB").textContent = "(" + total(sc[1]) + ")";
     var ph = PH[state.phase];
-    periodEl.textContent = ph.name;
+    periodEl.textContent = ph.name + ((state.phase === 4 || state.phase === 8) && isSaved() ? ", saved" : "");
     periodEl.classList.toggle("live", ph.run);
-    phaseBtn.hidden = !ph.next;
-    phaseBtn.textContent = ph.next || "";
-    phaseBtn.classList.toggle("primary", state.phase !== 4);
+    // At full time the main button saves to the archive. Extra time has its own smaller button.
+    var ended = state.phase === 4 || state.phase === 8, saved = isSaved();
+    phaseBtn.hidden = !ended && !ph.next;
+    phaseBtn.textContent = ended ? (saved ? (nextArmed ? "Press again for next match" : "Next match") : "Save to archive") : ph.next || "";
+    phaseBtn.classList.add("primary");
+    phaseBtn.classList.toggle("arm", ended && saved && nextArmed);
+    $("etBtn").hidden = state.phase !== 4;
+    minusBtn.hidden = plusBtn.hidden = ended;
     backBtn.disabled = state.phase === 0;
     minusBtn.disabled = plusBtn.disabled = !ph.run;
   }
@@ -1131,7 +1152,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         : st + " of 15 starters named, " + bn + " on the bench.";
     });
   }
-  function paintAll() { paintBoard(); paintPads(); paintDetail(); paintList(); paintStats(); paintTabs(); paintPanel(); paintArchive(); tick(); }
+  function paintAll() { paintBoard(); paintPads(); paintDetail(); paintList(); paintStats(); paintTabs(); paintPanel(); paintArchive(); paintFT(); tick(); }
 
   /* Actions */
   function uid() { return Date.now() + "-" + Math.random().toString(36).slice(2, 7); }
@@ -1187,6 +1208,22 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   });
 
   phaseBtn.addEventListener("click", function () {
+    if (state.phase === 4 || state.phase === 8) {
+      if (!isSaved()) { saveToArchive(); return; }
+      // Next match takes two presses, so a stray tap at full time cannot clear the screen.
+      if (!nextArmed) {
+        nextArmed = true; paintBoard();
+        nextTimer = setTimeout(function () { nextArmed = false; paintBoard(); }, 3000);
+        return;
+      }
+      clearTimeout(nextTimer); nextArmed = false;
+      if (startNewMatch()) { state.tab = "teams"; save(); paintTabs(); say("New match ready. Pick the teams, then tap Start 1st half.", 6000); }
+      return;
+    }
+    advance();
+  });
+  $("etBtn").addEventListener("click", function () { if (state.phase === 4) advance(); });
+  function advance() {
     var now = Date.now();
     if (!PH[state.phase].next) return;
     if (PH[state.phase].run) state.ends[state.phase] = now;
@@ -1194,8 +1231,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     if (PH[state.phase].run) { state.starts[state.phase] = now; keepAwake(); }
     else if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
     if (state.phase === 1) state.tab = "match";
-    save(); paintBoard(); paintTabs(); tick();
-  });
+    $("ftMsg").hidden = true;
+    save(); paintBoard(); paintTabs(); paintFT(); tick();
+  }
 
   // Two presses, since the viewer blocks confirm() dialogs.
   function twoPress(btn, label, armedLabel, action) {
@@ -1218,21 +1256,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     if (PH[state.phase].run) delete state.starts[state.phase];
     state.phase -= 1;
     if (PH[state.phase].run) { delete state.ends[state.phase]; keepAwake(); }
-    save(); paintBoard(); tick();
+    save(); paintBoard(); paintFT(); tick();
   });
-  twoPress($("newMatch"), "Start new match", "Press again to start a new match", function () {
-    var had = state.entries.length > 0;
-    if (!archiveCurrent()) {
-      $("newMsg").textContent = "This match could not be moved to the Archive because the phone's storage for this page is full. Save its report as a file, or delete old matches, then try again.";
-      return;
-    }
-    state.id = uid();
-    state.entries = []; state.sel = null; state.phase = 0; state.starts = {}; state.ends = {};
-    state.teams[1] = { name: "Opposition", rows: blankRows() };
-    exportEl.hidden = true; exportNote.hidden = true;
-    save(); showState();
-    $("newMsg").textContent = had ? "New match ready. The last one is in the Archive." : "New match ready.";
-  });
+  twoPress($("newMatch"), "Start new match", "Press again to start a new match", function () { startNewMatch(); });
   function nudge(ms) {
     var i = state.phase;
     if (!PH[i].run) return;
@@ -1250,11 +1276,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   [0, 1].forEach(function (side) {
     $(side ? "teamB" : "teamA").addEventListener("input", function (ev) { state.teams[side].name = ev.target.value; save(); paintAll(); });
     twoPress($(side ? "clearB" : "clearA"), "Clear names", "Press again to clear", function () {
-      state.teams[side].rows = blankRows(); RC[side] = null; save(); buildRows(side); paintAll();
+      state.teams[side].rows = blankRows(); RC[side] = null; if (side === 0) openRow = -1; save(); buildRows(side); paintAll();
     });
   });
 
   function buildRows(side) {
+    if (side === 0) { buildPickRows(); return; }
     var box = $(side ? "rowsB" : "rowsA"), names = [];
     box.textContent = "";
     state.teams[side].rows.forEach(function (r, k) {
@@ -1293,22 +1320,34 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   /* Saved panel: our players, kept between matches */
   var PKEY = "match-panel-v1", AKEY = "match-archive-v1";
-  var panel = [], archive = [], panelRemove = false;
+  var panel = [], archive = [];
   function loadExtra() {
     try { panel = JSON.parse(localStorage.getItem(PKEY)) || []; } catch (e) { panel = []; }
     try { archive = JSON.parse(localStorage.getItem(AKEY)) || []; } catch (e) { archive = []; }
     if (!Array.isArray(panel)) panel = [];
     if (!Array.isArray(archive)) archive = [];
-    panel = panel.filter(function (x) { return typeof x === "string" && x.trim(); });
+    panel = panel.filter(function (x) { return typeof x === "string" && x.trim(); }).sort(bySurname);
     archive = archive.filter(function (a) { return a && a.m && Array.isArray(a.m.entries); });
   }
-  function savePanel() { try { localStorage.setItem(PKEY, JSON.stringify(panel)); } catch (e) {} }
+  function storePanel() { panel.sort(bySurname); try { localStorage.setItem(PKEY, JSON.stringify(panel)); } catch (e) {} }
+  function savePanel() { storePanel(); var f = syncFlags(); f.dirty = true; setFlags(f); pushPanel(); }
   function saveArchive(list) { try { localStorage.setItem(AKEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
   function tidy(x) { return String(x || "").trim().replace(/\s+/g, " "); }
   function norm(x) { return tidy(x).toLowerCase(); }
+  // Sort key: surname first. "Sean O Briain" files under O, "Jack Murphy Jnr" under M, "Murphy, Jack" under M.
+  var PARTICLE = { o: 1, "ó": 1, mac: 1, mc: 1, ni: 1, "ní": 1, nic: 1, ui: 1, "uí": 1, de: 1, van: 1, von: 1, fitz: 1 };
+  var SUFFIX = { jnr: 1, jr: 1, snr: 1, sr: 1, junior: 1, senior: 1, ii: 1, iii: 1 };
+  function surnameKey(name) {
+    var s = norm(name).replace(/['’‘.()]/g, "");
+    if (s.indexOf(",") >= 0) { var c = s.split(","); return tidy(c[0]) + " " + tidy(c.slice(1).join(" ")); }
+    var t = s.split(" ").filter(Boolean), tail = [];
+    while (t.length > 1 && SUFFIX[t[t.length - 1]]) tail.unshift(t.pop());
+    var i = t.length - 1;
+    while (i > 1 && PARTICLE[t[i - 1]]) i -= 1;
+    return tidy(t.slice(i).join(" ") + " " + t.slice(0, i).join(" ") + " " + tail.join(" "));
+  }
   function bySurname(a, b) {
-    var x = norm(a).split(" "), y = norm(b).split(" ");
-    return x[x.length - 1].localeCompare(y[y.length - 1]) || norm(a).localeCompare(norm(b));
+    return surnameKey(a).localeCompare(surnameKey(b), "en", { sensitivity: "base" }) || norm(a).localeCompare(norm(b));
   }
   function sheetIndex(name) {
     var rows = state.teams[0].rows, n = norm(name);
@@ -1327,43 +1366,169 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     return true;
   }
   function jersey(k) { return tidy(state.teams[0].rows[k].n) || String(k + 1); }
-  function paintPanel() {
-    var box = $("panelChips"), ne = nextEmpty();
+  function panelSpelling(name) {
+    var hit = "";
+    panel.forEach(function (p) { if (norm(p) === norm(name)) hit = p; });
+    return hit;
+  }
+  var panelOpen = false, openRow = -1;
+
+  // Put a name on a jersey. A name new to the panel is saved there. A name already on another jersey moves.
+  function setRow(k, name, advance) {
+    var rows = state.teams[0].rows;
+    name = tidy(name);
+    if (name) {
+      var other = sheetIndex(name);
+      if (other >= 0 && other !== k) rows[other].name = "";
+      var saved = panelSpelling(name);
+      if (saved) name = saved;
+      else { panel.push(name); savePanel(); $("panelMsg").textContent = name + " was added to the saved panel."; }
+    }
+    rows[k].name = name;
+    RC[0] = null; save();
+    var nx = k + 1;
+    openRow = advance && name && nx < rows.length && !tidy(rows[nx].name) ? nx : -1;
+    buildPickRows(); paintAll();
+  }
+  function dropFor(k) {
+    var r = state.teams[0].rows[k], d = h("div", "drop"), line = h("div", "addrow");
+    var inp = h("input"), use = h("button", "primary", "Use"), listBox = h("div", "chips players opts");
+    inp.type = "text"; inp.id = "pickType"; inp.value = tidy(r.name); inp.placeholder = "Or type a name";
+    inp.autocomplete = "off";
+    inp.setAttribute("autocapitalize", "words"); inp.setAttribute("enterkeyhint", "done");
+    inp.setAttribute("aria-label", "Type a name for number " + jersey(k));
+    use.type = "button";
+    function fill() {
+      listBox.textContent = "";
+      var q = norm(inp.value), cur = norm(r.name), typing = q && q !== cur;
+      // The untouched list shows players without a jersey. Typing searches the whole panel, so a player can be moved.
+      var names = panel.slice().sort(bySurname).filter(function (name) {
+        var at = sheetIndex(name);
+        return typing ? at !== k && norm(name).indexOf(q) >= 0 : at < 0;
+      });
+      names.forEach(function (name) {
+        var at = sheetIndex(name);
+        var b = h("button", "chip", at >= 0 ? name + ", move from number " + jersey(at) : name);
+        b.type = "button";
+        b.addEventListener("click", function () { setRow(k, name, true); });
+        listBox.appendChild(b);
+      });
+      if (!names.length) {
+        listBox.className = "opts";
+        listBox.appendChild(h("p", "note", !panel.length ? "Your saved panel is empty. Type a name and tap Use. It is kept for future matches."
+          : typing ? "No saved player matches. Tap Use to put " + tidy(inp.value) + " on this jersey and into the saved panel."
+          : "Every saved player is already on the sheet. Type a new name and tap Use."));
+      } else listBox.className = "chips players opts";
+    }
+    function commit() { var v = tidy(inp.value); if (v) setRow(k, v, true); }
+    inp.addEventListener("input", fill);
+    inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); commit(); } });
+    inp.addEventListener("paste", function (ev) {
+      var text = (ev.clipboardData && ev.clipboardData.getData("text")) || "";
+      var lines = text.split(/\r?\n/).map(trim).filter(Boolean);
+      if (lines.length < 2) return;
+      ev.preventDefault();
+      var rows = state.teams[0].rows, added = 0;
+      lines.forEach(function (line, x) {
+        var name = tidy(line.replace(/^\d{1,2}[\s.):,-]+/, ""));
+        if (!name || !rows[k + x]) return;
+        var other = sheetIndex(name);
+        if (other >= 0 && other !== k + x) rows[other].name = "";
+        if (panelAddName(name)) added += 1;
+        rows[k + x].name = panelSpelling(name) || name;
+      });
+      savePanel();
+      if (added) $("panelMsg").textContent = added + (added === 1 ? " new player was" : " new players were") + " added to the saved panel.";
+      RC[0] = null; save(); openRow = -1; buildPickRows(); paintAll();
+    });
+    use.addEventListener("click", commit);
+    line.appendChild(inp); line.appendChild(use);
+    d.appendChild(listBox); d.appendChild(line);
+    if (tidy(r.name)) {
+      var clr = h("button", null, "Empty this jersey");
+      clr.type = "button";
+      clr.addEventListener("click", function () { setRow(k, "", false); });
+      d.appendChild(clr);
+    }
+    fill();
+    return d;
+  }
+  function buildPickRows() {
+    var box = $("rowsA");
     box.textContent = "";
-    box.className = "chips" + (panel.length ? " players" : "");
-    $("panelBox").classList.toggle("removing", panelRemove);
-    $("panelInfo").textContent = !panel.length
-      ? "No panel saved yet. Type this week's team in the list below, then tap Add sheet names. After that you pick the team by tapping names."
-      : panelRemove ? "Tap a name to remove that player from the panel."
-      : ne < 0 ? "Every jersey is filled. Tap a selected name to take that player out."
-      : "Tap a name to give that player the next empty jersey, number " + jersey(ne) + ". Tap a selected name to take that player out.";
+    state.teams[0].rows.forEach(function (r, k) {
+      if (k === 15) box.appendChild(h("span", "lbl", "Bench"));
+      var row = h("div", "prow"), num = h("input", "num"), name = tidy(r.name);
+      var pick = h("button", "pick" + (name ? "" : " blank"), name || "Pick a player");
+      num.type = "text"; num.inputMode = "numeric"; num.maxLength = 2; num.value = r.n; num.autocomplete = "off";
+      num.id = "n0_" + k;
+      num.setAttribute("aria-label", "Jersey number, row " + (k + 1));
+      num.addEventListener("input", function () { r.n = num.value; RC[0] = null; save(); paintAll(); });
+      pick.type = "button"; pick.id = "p0_" + k;
+      pick.setAttribute("aria-expanded", openRow === k ? "true" : "false");
+      pick.setAttribute("aria-label", "Number " + jersey(k) + ", " + (name || "empty") + ". Pick a player");
+      pick.addEventListener("click", function () { openRow = openRow === k ? -1 : k; buildPickRows(); });
+      row.appendChild(num); row.appendChild(pick);
+      box.appendChild(row);
+      if (openRow === k) box.appendChild(dropFor(k));
+    });
+  }
+
+  function paintPanel() {
+    var n = panel.length;
+    $("panelHead").textContent = "Saved panel, " + n + (n === 1 ? " player" : " players");
+    var where = cloud.state === "synced" ? "Saved to your Claude account, so it shows on every device where you open MatchTracker in Claude."
+      : cloud.state === "error" ? "Kept on this device. It could not be saved to your Claude account just now."
+      : "Kept on this device.";
+    $("panelInfo").textContent = n
+      ? where + " Tap a jersey below to pick from it. A new name you type on a jersey is added here."
+      : "No saved players yet. Tap a jersey below and type a name, or tap Edit panel and paste in a full list. Every name is kept for future matches.";
+    $("panelToggle").textContent = panelOpen ? "Done" : "Edit panel";
+    $("panelToggle").setAttribute("aria-expanded", panelOpen ? "true" : "false");
+    $("panelEditBox").hidden = !panelOpen;
+    var box = $("panelRows");
+    box.textContent = "";
+    if (!panelOpen) return;
     panel.slice().sort(bySurname).forEach(function (name) {
-      var k = sheetIndex(name);
-      var b = h("button", "chip" + (k >= 0 && !panelRemove ? " on" : ""), panelRemove ? "× " + name : k >= 0 ? jersey(k) + " " + name : name);
-      b.type = "button";
-      if (!panelRemove) b.setAttribute("aria-pressed", k >= 0 ? "true" : "false");
-      b.addEventListener("click", function () {
-        if (panelRemove) {
-          panel = panel.filter(function (p) { return norm(p) !== norm(name); });
-          savePanel(); paintPanel();
+      var row = h("div", "prow2"), inp = h("input"), del = h("button", null, "×");
+      inp.type = "text"; inp.value = name; inp.autocomplete = "off";
+      inp.setAttribute("autocapitalize", "words");
+      inp.setAttribute("aria-label", "Saved player name, " + name);
+      inp.addEventListener("change", function () {
+        var v = tidy(inp.value);
+        if (!v || (norm(v) !== norm(name) && panelSpelling(v))) {
+          $("panelMsg").textContent = v ? v + " is already in the saved panel." : "A saved player needs a name. Use the × to remove one.";
+          inp.value = name;
           return;
         }
-        if (k >= 0) state.teams[0].rows[k].name = "";
-        else { var e = nextEmpty(); if (e < 0) return; state.teams[0].rows[e].name = name; }
-        RC[0] = null; save(); buildRows(0); paintAll();
+        var k = sheetIndex(name);
+        panel = panel.map(function (p) { return p === name ? v : p; });
+        savePanel();
+        if (k >= 0) { state.teams[0].rows[k].name = v; RC[0] = null; save(); buildPickRows(); }
+        $("panelMsg").textContent = "Renamed to " + v + ".";
+        paintAll();
       });
-      box.appendChild(b);
+      del.type = "button";
+      del.setAttribute("aria-label", "Remove " + name + " from the saved panel");
+      del.addEventListener("click", function () {
+        panel = panel.filter(function (p) { return p !== name; });
+        savePanel();
+        $("panelMsg").textContent = name + " was removed from the saved panel.";
+        if (openRow >= 0) buildPickRows();
+        paintPanel();
+      });
+      row.appendChild(inp); row.appendChild(del);
+      box.appendChild(row);
     });
-    $("panelEdit").hidden = !panel.length;
-    $("panelEdit").textContent = panelRemove ? "Done removing" : "Remove players";
-    $("panelEdit").setAttribute("aria-pressed", panelRemove ? "true" : "false");
   }
   function panelAddMany(lines) {
     var added = 0;
     lines.forEach(function (line) { if (panelAddName(String(line).replace(/^\d{1,2}[\s.):,-]+/, ""))) added += 1; });
-    savePanel(); paintPanel();
+    savePanel();
     $("panelMsg").textContent = added ? "Added " + added + (added === 1 ? " player" : " players") + ". The panel has " + panel.length + "."
       : "Nothing new to add. The panel has " + panel.length + ".";
+    if (openRow >= 0) buildPickRows();
+    paintPanel();
   }
   function panelAddFromBox() {
     var v = $("panelAdd").value;
@@ -1380,69 +1545,235 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     ev.preventDefault();
     panelAddMany(lines);
   });
-  $("panelFromSheet").addEventListener("click", function () {
-    panelAddMany(state.teams[0].rows.map(function (r) { return r.name; }).filter(tidy));
-  });
-  $("panelEdit").addEventListener("click", function () { panelRemove = !panelRemove; paintPanel(); });
+  $("panelToggle").addEventListener("click", function () { panelOpen = !panelOpen; paintPanel(); });
 
-  /* Archive: finished matches, kept on this phone */
+  /* Saved panel in the viewer's own private store, so it follows them across devices inside Claude.
+     Without that store (the standalone copy, or a signed-out view) the panel stays in this browser only. */
+  var SKEY = "match-panel-sync-v1";
+  var cloud = { ref: null, state: "local", first: false, pushing: false, again: false };
+  function syncFlags() { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch (e) { return {}; } }
+  function setFlags(f) { try { localStorage.setItem(SKEY, JSON.stringify(f)); } catch (e) {} }
+  function cleanNames(list) {
+    var out = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (x) {
+      var name = typeof x === "string" ? tidy(x) : "";
+      if (name && !seen[norm(name)]) { seen[norm(name)] = 1; out.push(name); }
+    });
+    return out.sort(bySurname);
+  }
+  function samePanel(a, b) {
+    if (a.length !== b.length) return false;
+    var x = a.map(norm).sort(), y = b.map(norm).sort();
+    for (var k = 0; k < x.length; k++) if (x[k] !== y[k]) return false;
+    return true;
+  }
+  function markSynced() { var f = syncFlags(); f.synced = true; f.dirty = false; setFlags(f); cloud.state = "synced"; }
+  function repaintPanel() { if (openRow >= 0) buildPickRows(); paintPanel(); }
+  function pushPanel() {
+    if (!cloud.ref) return;
+    if (cloud.pushing) { cloud.again = true; return; }
+    cloud.pushing = true;
+    cloud.ref.set({ names: panel.slice(), updatedAt: Date.now() }).then(function () {
+      if (cloud.again) cloud.state = "synced"; else markSynced();
+    }, function () { cloud.state = "error"; }).then(function () {
+      cloud.pushing = false;
+      if (cloud.again) { cloud.again = false; pushPanel(); }
+      paintPanel();
+    });
+  }
+  function adoptPanel(remote) {
+    if (!samePanel(panel, remote)) { panel = remote; storePanel(); }
+    markSynced(); repaintPanel();
+  }
+  function onRemotePanel(snap) {
+    var meta = snap.metadata || {};
+    if (meta.fromCache || meta.hasPendingWrites) return;
+    var f = syncFlags();
+    var remote = snap.exists ? cleanNames((snap.data() || {}).names) : null;
+    if (!cloud.first) {
+      cloud.first = true;
+      if (remote === null) { if (panel.length) pushPanel(); else { markSynced(); paintPanel(); } }
+      else if (!f.synced) {
+        // First time this device meets the account copy: keep both sets of names.
+        remote.forEach(panelAddName);
+        if (samePanel(panel, remote)) adoptPanel(remote); else { savePanel(); repaintPanel(); }
+      }
+      else if (f.dirty) pushPanel();
+      else adoptPanel(remote);
+      return;
+    }
+    if (remote && !f.dirty && !cloud.pushing) adoptPanel(remote);
+  }
+  function startCloud() {
+    try {
+      if (!(window.claude && window.claude.use)) return;
+      Promise.all([window.claude.use("db"), window.claude.use("user")]).then(function (r) {
+        var db = r[0], user = r[1];
+        if (!db || !user) return null;
+        return user.id().then(function (id) {
+          if (!id) return;
+          cloud.ref = db.doc("data/users/" + id + "/panel");
+          cloud.ref.onSnapshot(onRemotePanel, function () { cloud.ref = null; cloud.state = "error"; paintPanel(); });
+          arch.col = db.doc("data/users/" + id + "/archive").collection("matches");
+          arch.col.onSnapshot(onRemoteArchive, function () { arch.col = null; arch.state = "error"; paintArchive(); paintFT(); });
+        });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  /* Archive: every saved match. Kept in the viewer's Claude account when available, and on this device as a copy. */
+  var arch = { col: null, state: "local", inflight: {}, again: {} };
+  var lastArchived = "", refreshTimer = null;
   function snapshot() {
     return JSON.parse(JSON.stringify({ id: state.id, code: state.code, teams: state.teams, phase: state.phase,
                                        starts: state.starts, ends: state.ends, entries: state.entries }));
   }
-  function withCurrent() {
-    var list = archive.filter(function (a) { return a.id !== state.id; });
-    if (state.entries.length) list.unshift({ id: state.id, savedAt: Date.now(), m: snapshot() });
-    return list;
+  function findArch(id) { var hit = null; archive.forEach(function (a) { if (a.id === id) hit = a; }); return hit; }
+  function matchTime(a) { return a.m.entries.length ? a.m.entries[0].at : a.savedAt; }
+  function pushMatch(entry) {
+    if (!arch.col) return;
+    var id = entry.id;
+    if (arch.inflight[id]) { arch.again[id] = true; return; }
+    arch.inflight[id] = true;
+    arch.col.doc(id).set({ id: id, savedAt: entry.savedAt, m: entry.m }).then(function () {
+      var a = findArch(id);
+      if (a && a.savedAt === entry.savedAt) { a.cloud = true; saveArchive(archive); }
+      arch.state = "synced";
+    }, function () { arch.state = "error"; }).then(function () {
+      delete arch.inflight[id];
+      if (arch.again[id]) { delete arch.again[id]; var cur = findArch(id); if (cur) pushMatch(cur); }
+      paintArchive(); paintFT();
+    });
   }
+  function onRemoteArchive(snap) {
+    var meta = snap.metadata || {};
+    if (meta.fromCache || meta.hasPendingWrites) return;
+    var remote = {}, next = [], changed = false;
+    snap.docs.forEach(function (d) {
+      var x = d.data();
+      if (x && x.m && Array.isArray(x.m.entries)) remote[d.id] = { id: d.id, savedAt: x.savedAt || 0, m: x.m, cloud: true };
+    });
+    archive.forEach(function (a) {
+      var r = remote[a.id];
+      delete remote[a.id];
+      if (!r) {
+        if (a.cloud) { changed = true; if (a.id === state.id) { state.archivedAt = null; save(); } return; }  // deleted on another device
+        next.push(a); pushMatch(a); return;                                                                // never uploaded yet
+      }
+      if (r.savedAt > a.savedAt) { next.push(r); changed = true; return; }
+      if (r.savedAt < a.savedAt) pushMatch(a);
+      else if (!a.cloud) { a.cloud = true; changed = true; }
+      next.push(a);
+    });
+    Object.keys(remote).forEach(function (id) { next.push(remote[id]); changed = true; });
+    arch.state = "synced";
+    if (changed) { archive = next; saveArchive(archive); }
+    paintArchive(); paintFT();
+  }
+  // Put the match on the Match tab into the archive, or bring its archive copy up to date.
   function archiveCurrent() {
-    var list = withCurrent();
+    if (!state.entries.length) return true;
+    var entry = { id: state.id, savedAt: Date.now(), m: snapshot() };
+    var list = archive.filter(function (a) { return a.id !== state.id; });
+    list.unshift(entry);
     if (!saveArchive(list)) return false;
     archive = list;
+    lastArchived = JSON.stringify(entry.m);
+    state.archivedAt = entry.savedAt;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    pushMatch(entry);
+    return true;
+  }
+  function laterRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(function () {
+      if (!state.archivedAt || !state.entries.length) return;
+      if (JSON.stringify(snapshot()) === lastArchived) return;
+      archiveCurrent();
+      paintArchive(); paintFT();
+    }, 1500);
+  }
+  var FULL = "This match could not be saved because the storage for this page is full. Save its report as a file, or delete old matches, then try again.";
+  var msgTimer = null, nextArmed = false, nextTimer = null;
+  function say(text, ms) {
+    var el = $("ftMsg");
+    el.textContent = text; el.hidden = false;
+    clearTimeout(msgTimer);
+    if (ms) msgTimer = setTimeout(function () { el.hidden = true; }, ms);
+  }
+  function isSaved() { return !!state.archivedAt && !!findArch(state.id); }
+  function saveToArchive() {
+    if (!state.entries.length) { say("Nothing logged yet, so there is nothing to save.", 5000); return; }
+    if (!archiveCurrent()) { say(FULL); return; }
+    paintArchive(); paintFT();
+    say("Saved to the archive at " + wall(Date.now()).slice(0, 5) + ". Corrections are saved as you go. Tap Next match when you are ready for the next game.", 9000);
+  }
+  function startNewMatch() {
+    var had = state.entries.length > 0;
+    if (!archiveCurrent()) { $("newMsg").textContent = FULL; return false; }
+    state.id = uid();
+    state.entries = []; state.sel = null; state.phase = 0; state.starts = {}; state.ends = {};
+    state.archivedAt = null; lastArchived = "";
+    state.teams[1] = { name: "Opposition", rows: blankRows() };
+    exportEl.hidden = true; exportNote.hidden = true;
+    save(); showState();
+    $("newMsg").textContent = had ? "New match ready. The last one is in the Archive." : "New match ready.";
     return true;
   }
   function openMatch(id) {
-    var hit = null;
-    archive.forEach(function (a) { if (a.id === id) hit = a; });
+    var hit = findArch(id);
     if (!hit) return;
-    // Keep the current match first, then switch, then drop the opened one from the list.
-    var list = withCurrent();
-    if (!saveArchive(list)) {
-      $("archInfo").textContent = "That match could not be opened because the phone's storage for this page is full. Delete an old match and try again.";
-      return;
-    }
+    if (!archiveCurrent()) { $("archInfo").textContent = FULL; return; }  // the match being left is kept first
     var next = fresh(), m = JSON.parse(JSON.stringify(hit.m));
     Object.keys(m).forEach(function (key) { next[key] = m[key]; });
-    next.id = hit.id; next.tab = "match"; next.sel = null;
+    next.id = hit.id; next.tab = "match"; next.sel = null; next.archivedAt = hit.savedAt;
     state = next;
-    save();
-    archive = list.filter(function (a) { return a.id !== hit.id; });
-    saveArchive(archive);
-    showState();
+    lastArchived = JSON.stringify(hit.m);
+    save(); showState();
   }
+  function whereArch() {
+    return arch.state === "synced" ? "your Claude account" : "this device";
+  }
+  function paintFT() {
+    $("archBtn").textContent = isSaved() ? "In the archive" : "Save to archive";
+    paintBoard();
+  }
+  $("archBtn").addEventListener("click", function () {
+    if (isSaved()) { state.tab = "archive"; save(); paintTabs(); paintArchive(); return; }
+    saveToArchive();
+  });
+
   function paintArchive() {
     var box = $("archList");
     box.textContent = "";
+    var where = arch.state === "synced" ? "Saved to your Claude account, so they show on every device where you open MatchTracker in Claude."
+      : arch.state === "error" ? "Kept on this device. They could not be reached in your Claude account just now."
+      : "Kept on this device.";
     $("archInfo").textContent = archive.length
-      ? "Finished matches kept on this phone. Open one to edit it or save its report. The match on the Match tab moves in here when you open another."
-      : "No past matches yet. When you start a new match, the one you were logging is kept here.";
-    archive.forEach(function (a) {
+      ? where + " Open one to correct it or save its report."
+      : "No saved matches yet. At full time, tap Match over, save to archive on the Match tab.";
+    archive.slice().sort(function (x, y) { return matchTime(y) - matchTime(x); }).forEach(function (a) {
       var m = a.m, sc = [{ g: 0, p: 0 }, { g: 0, p: 0 }];
       m.entries.forEach(function (e) { if (SCORE[e.kind] && sc[e.side]) addScore(sc[e.side], e); });
       var names = [0, 1].map(function (i) { return tidy(m.teams && m.teams[i] && m.teams[i].name) || (i ? "Opposition" : "Our team"); });
-      var d = new Date(m.entries.length ? m.entries[0].at : a.savedAt);
+      var d = new Date(matchTime(a)), here = a.id === state.id;
       var row = h("div", "arow");
       row.appendChild(h("strong", null, names[0] + " " + fs(sc[0]) + " (" + total(sc[0]) + ") v " + names[1] + " " + fs(sc[1]) + " (" + total(sc[1]) + ")"));
       row.appendChild(h("small", null, (m.code === "football" ? "Football" : "Hurling") + ", " +
         d.toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) + ", " +
         m.entries.length + (m.entries.length === 1 ? " entry" : " entries")));
+      if (here) row.appendChild(h("span", "now", "Open on the Match tab now"));
       var btns = h("div", "btns"), open = h("button", "primary", "Open"), del = h("button", null, "Delete");
       open.type = "button"; del.type = "button";
+      open.hidden = here;
       open.addEventListener("click", function () { openMatch(a.id); });
       twoPress(del, "Delete", "Press again to delete for good", function () {
         var list = archive.filter(function (x) { return x.id !== a.id; });
-        if (saveArchive(list)) archive = list;
-        paintArchive();
+        if (!saveArchive(list)) return;
+        archive = list;
+        if (arch.col) arch.col.doc(a.id).delete().catch(function () {});
+        if (here) { state.archivedAt = null; save(); }
+        paintArchive(); paintFT();
       });
       btns.appendChild(open); btns.appendChild(del);
       row.appendChild(btns);
@@ -1452,7 +1783,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   function showState() {
     migrate();
     if (!state.id) state.id = uid();
-    RC = [null, null];
+    RC = [null, null]; openRow = -1;
     $("teamA").value = state.teams[0].name; $("teamB").value = state.teams[1].name;
     buildRows(0); buildRows(1);
     paintAll();
@@ -1659,8 +1990,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     loadExtra();
     migrate();
     if (!state.id) state.id = uid();
-    archive = archive.filter(function (a) { return a.id !== state.id; });
+    var mine = findArch(state.id);
+    if (state.archivedAt && mine) lastArchived = JSON.stringify(mine.m);
+    if (!panel.length) {
+      state.teams[0].rows.forEach(function (r) { panelAddName(r.name); });
+      if (panel.length) savePanel();
+    }
     showState();
+    startCloud();
     setInterval(tick, 200);
     keepAwake();
   }
